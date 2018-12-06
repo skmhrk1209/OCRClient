@@ -46,7 +46,7 @@ int main() {
 
     Client client(io_service);
 
-    client.connect("127.0.0.1", 31400);
+    client.connect("192.168.6.116", 31400);
 
     io_service.run();
 }
