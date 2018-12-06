@@ -42,7 +42,4 @@ int main(int argc, char* argv[]) {
     client.send("fuck\n");
 
     io_context.run();
-
-    while (true) {
-    }
 }
