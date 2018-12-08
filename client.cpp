@@ -11,7 +11,10 @@ class Client {
    private:
     boost::asio::io_context& io_context;
     boost::asio::ip::tcp::socket socket;
-    std::string buffer;
+
+   public:
+    std::string head;
+    std::string tail;
 
    public:
     Client(boost::asio::io_context& io_context_) : io_context(io_context_), socket(io_context_) {}
@@ -28,7 +31,7 @@ class Client {
     }
 
     void send(const std::string& string) {
-        boost::asio::async_write(socket, boost::asio::buffer(string), [this, string](auto error_code, auto size) {
+        boost::asio::async_write(socket, boost::asio::buffer("<s>" + string + "</s>"), [this, string](auto error_code, auto size) {
             if (error_code) {
                 std::cout << "send failed: " << error_code.message() << std::endl;
             } else {
@@ -40,7 +43,7 @@ class Client {
     }
 
     void receive() {
-        boost::asio::async_read_until(socket, boost::asio::dynamic_buffer(buffer), boost::regex("<s>.*</s>"), [this](auto error_code, auto size) {
+        boost::asio::async_read_until(socket, boost::asio::dynamic_buffer(tail), boost::regex("<s>.*</s>"), [this](auto error_code, auto size) {
             if (error_code) {
                 std::cout << "receive failed: " << error_code.message() << std::endl;
 
@@ -50,29 +53,27 @@ class Client {
                 std::string start_token = "<s>";
                 std::string end_token = "</s>";
 
-                std::string string(std::search(buffer.begin(), buffer.end(), start_token.begin(), start_token.end()) + start_token.size(),
-                                   std::search(buffer.begin(), buffer.end(), end_token.begin(), end_token.end()));
-                std::cout << "receive succeeded: " << string << std::endl;
+                head = std::string(std::search(tail.begin(), tail.end(), start_token.begin(), start_token.end()) + start_token.size(),
+                                   std::search(tail.begin(), tail.end(), end_token.begin(), end_token.end()));
+                std::cout << "receive succeeded: " << head << std::endl;
 
-                buffer.erase(size);
+                tail.erase(0, size);
             }
         });
     }
-
-    const std::string& get_buffer() const { return buffer; }
 };
 
 PYBIND11_MODULE(client, module) {
-    module.def("request", [](const std::string& ip, unsigned short port, const std::string& string) {
+    module.def("request", [](const std::string& ip_address, const std::string& port_number, const std::string& string) {
         boost::asio::io_context io_context;
         Client client(io_context);
 
-        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(ip), port);
+        boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(ip_address), std::stoi(port_number));
         client.connect(endpoint);
-        client.send("<s>" + string + "</s>");
+        client.send(string);
 
         io_context.run();
 
-        return client.get_buffer();
+        return client.head;
     });
 }
