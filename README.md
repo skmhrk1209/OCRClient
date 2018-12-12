@@ -1,1 +1,1 @@
-# OCRClient
+# TensorFlow Hub Client
