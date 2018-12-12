@@ -5,7 +5,7 @@ import re
 import base64
 import json
 import client
-from algorithms import *
+from class_names import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -26,21 +26,17 @@ class MainWindow(QWidget):
         self.image_pixmap = QGraphicsPixmapItem()
         self.image_scene.addItem(self.image_pixmap)
 
-        self.bounding_box = QGraphicsRectItem()
-        self.bounding_box.setPen(QPen(Qt.red, 2))
-        self.image_scene.addItem(self.bounding_box)
-
         self.image_view.setScene(self.image_scene)
         self.image_layout.addWidget(self.image_view)
 
-        self.property_layout = QVBoxLayout()
+        self.misc_layout = QVBoxLayout()
 
         self.setting_layout = QGridLayout()
 
         self.ip_address_label = QLabel("IP Address")
         self.setting_layout.addWidget(self.ip_address_label, 0, 0)
 
-        self.ip_address_edit = QLineEdit("192.168.1.4")
+        self.ip_address_edit = QLineEdit("127.0.0.1")
         self.setting_layout.addWidget(self.ip_address_edit, 0, 1)
 
         self.port_number_label = QLabel("Port Number")
@@ -49,47 +45,51 @@ class MainWindow(QWidget):
         self.port_number_edit = QLineEdit("1234")
         self.setting_layout.addWidget(self.port_number_edit, 1, 1)
 
-        self.property_layout.addLayout(self.setting_layout)
+        self.misc_layout.addLayout(self.setting_layout)
 
-        self.operation_layout = QVBoxLayout()
+        self.property_layout = QVBoxLayout()
+
+        self.class_name_label = QLabel("Class Name")
+        self.class_name_label.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
+        self.property_layout.addWidget(self.class_name_label)
+
+        self.class_name_edit = QLineEdit()
+        self.property_layout.addWidget(self.class_name_edit)
+
+        self.class_id_slider = QSlider(Qt.Horizontal)
+        self.class_id_slider.setRange(0, 999)
+        self.class_id_slider.valueChanged.connect(
+            lambda value: self.class_name_edit.setText(class_names[value])
+        )
+        self.property_layout.addWidget(self.class_id_slider)
 
         self.open_button = QPushButton("Open File")
         self.open_button.clicked.connect(self.open)
-        self.operation_layout.addWidget(self.open_button)
+        self.property_layout.addWidget(self.open_button)
 
-        self.request_button = QPushButton("Request OCR")
-        self.request_button.clicked.connect(self.request)
-        self.operation_layout.addWidget(self.request_button)
+        self.misc_layout.addLayout(self.property_layout)
 
-        self.property_layout.addLayout(self.operation_layout)
+        self.request_layout = QVBoxLayout()
 
-        self.result_layout = QVBoxLayout()
+        self.request_classification_button = QPushButton("Request Classification")
+        self.request_classification_button.clicked.connect(self.request_classification)
+        self.request_layout.addWidget(self.request_classification_button)
 
-        self.prediction_label = QLabel("Predictions")
-        self.prediction_label.setAlignment(Qt.AlignCenter)
-        self.result_layout.addWidget(self.prediction_label)
+        self.request_generation_button = QPushButton("Request Generation")
+        self.request_generation_button.clicked.connect(self.request_generation)
+        self.request_layout.addWidget(self.request_generation_button)
 
-        self.prediction_edits = [QLineEdit() for _ in range(4)]
-        for prediction_edit in self.prediction_edits:
-            self.result_layout.addWidget(prediction_edit)
-
-        self.attentionn_label = QLabel("Attentions")
-        self.attentionn_label.setAlignment(Qt.AlignCenter)
-        self.result_layout.addWidget(self.attentionn_label)
-
-        self.attention_slider = QSlider(Qt.Horizontal)
-        self.attention_slider.valueChanged.connect(self.pay_attention)
-        self.result_layout.addWidget(self.attention_slider)
-
-        self.property_layout.addLayout(self.result_layout)
+        self.misc_layout.addLayout(self.request_layout)
 
         self.main_layout = QHBoxLayout()
 
         self.main_layout.addLayout(self.image_layout)
-        self.main_layout.addLayout(self.property_layout)
+        self.main_layout.addLayout(self.misc_layout)
 
         self.setLayout(self.main_layout)
-        self.setWindowTitle("Attention OCR")
+        self.setWindowTitle("TensorFlow Hub Application")
+
+        self.result = {}
 
     def open(self):
 
@@ -97,32 +97,42 @@ class MainWindow(QWidget):
         self.image = QImage(filename)
         self.image_pixmap.setPixmap(QPixmap.fromImage(self.image).scaled(512, 512))
 
-    def request(self):
+    def request_classification(self):
 
-        image = self.image.scaled(256, 256)
-        byte_array = QByteArray()
-        buffer = QBuffer(byte_array)
-        buffer.open(QIODevice.WriteOnly)
-        image.save(buffer, "PNG")
-        base64_encoded = byte_array.toBase64().data()
+        image = self.image.convertToFormat(QImage.Format_RGB888).scaled(224, 224)
+        image = image.constBits().asstring(image.byteCount())
+        image = np.fromstring(image, np.uint8).reshape(224, 224, 3)
 
-        result = json.loads(client.request(self.ip_address_edit.text(), self.port_number_edit.text(), base64_encoded))
-        self.predictions = result["predictions"]
-        self.bounding_boxes = result["bounding_boxes"]
-        self.bounding_boxes = map_innermost_list(lambda point: list(map(lambda x: x * 16, point))[::-1], self.bounding_boxes)
-        self.bounding_boxes = map_innermost_list(lambda point: QPointF(*point), self.bounding_boxes)
-        self.bounding_boxes = map_innermost_list(lambda rect: QRectF(*rect), self.bounding_boxes)
-        self.bounding_boxes = flatten_innermost_element(self.bounding_boxes)
+        image = cv2.imencode(".png", image)[1]
+        image = image.tostring()
+        image = base64.b64encode(image)
 
-        for prediction_edit, prediction in zip(self.prediction_edits, self.predictions):
-            prediction_edit.setText(prediction)
+        self.result.update(json.loads(client.request(
+            self.ip_address_edit.text(),
+            self.port_number_edit.text(),
+            json.dumps(dict(process_type="classification", image=image))
+        )))
 
-    def pay_attention(self, value):
+        self.class_id_slider.setValue(self.result["class_id"])
 
-        self.bounding_box.setRect(self.bounding_boxes[int(len(self.bounding_boxes) * value / 100.0)])
+    def request_generation(self):
+
+        self.result.update(json.loads(client.request(
+            self.ip_address_edit.text(),
+            self.port_number_edit.text(),
+            json.dumps(dict(process_type="generation", class_id=self.class_id_slider.value()))
+        )))
+
+        image = base64.b64decode(self.result["image"])
+        image = np.fromstring(image, np.uint8)
+        image = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+        self.image = QImage(image.data, 512, 512, 512 * 3, QImage.Format_RGB888)
+        self.image_pixmap.setPixmap(QPixmap.fromImage(self.image))
 
 
 if __name__ == "__main__":
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

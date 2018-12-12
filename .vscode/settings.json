@@ -12,6 +12,8 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "algorithm": "cpp",
-        "cstdint": "cpp"
+        "cstdint": "cpp",
+        "iosfwd": "cpp",
+        "*.ipp": "cpp"
     }
 }
