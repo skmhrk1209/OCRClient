@@ -73,7 +73,7 @@ class Client {
         });
     }
 
-    std::string received() const { return socket->receive_buffer; }
+    std::string get_receive_buffer() const { return socket->receive_buffer; }
 };
 
 PYBIND11_MODULE(client, module) {
@@ -85,7 +85,7 @@ PYBIND11_MODULE(client, module) {
         if (client.connect(endpoint)) {
             client.send(string);
             io_context.run();
-            return client.received();
+            return client.get_receive_buffer();
         }
     });
 }
