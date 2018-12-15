@@ -27,11 +27,11 @@ class Client {
     asio::io_context& io_context;
     Socket::Ptr socket;
 
-    const std::string sos = "<s>";
-    const std::string eos = "</s>";
+    const std::string sos;
+    const std::string eos;
 
    public:
-    Client(asio::io_context& context) : io_context(context), socket(Socket::create(context)) {}
+    Client(asio::io_context& context) : io_context(context), socket(Socket::create(context)), sos("<s>"), eos("</s>") {}
 
     bool connect(const asio::ip::tcp::endpoint& endpoint) {
         boost::system::error_code error_code;
@@ -49,7 +49,7 @@ class Client {
     void send(const std::string& string) {
         socket->send_buffer = sos + string + eos;
 
-        asio::async_write(socket->socket, asio::buffer(socket->send_buffer), [=](auto error_code, ...) {
+        asio::async_write(socket->socket, asio::buffer(socket->send_buffer), [=](const auto& error_code, ...) {
             if (error_code) {
                 std::cout << "send failed: " << error_code.message() << std::endl;
                 socket->socket.close();
@@ -61,7 +61,7 @@ class Client {
     }
 
     void receive() {
-        asio::async_read_until(socket->socket, asio::dynamic_buffer(socket->receive_buffer), boost::regex(sos + ".*" + eos), [=](auto error_code, ...) {
+        asio::async_read_until(socket->socket, asio::dynamic_buffer(socket->receive_buffer), boost::regex(sos + ".*" + eos), [=](const auto& error_code, ...) {
             if (error_code) {
                 std::cout << "receive failed: " << error_code.message() << std::endl;
                 socket->socket.close();
