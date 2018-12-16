@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import sys
-import re
 import base64
 import json
 import client
@@ -89,17 +88,15 @@ class MainWindow(QWidget):
         self.setLayout(self.main_layout)
         self.setWindowTitle("TensorFlow Hub Application")
 
-        self.result = {}
-
     def open(self):
 
         filename, _ = QFileDialog.getOpenFileName(self, "Open file", ".")
-        self.image = QImage(filename)
-        self.image_pixmap.setPixmap(QPixmap.fromImage(self.image).scaled(512, 512))
+        self.image_pixmap.setPixmap(QPixmap(filename).scaled(512, 512))
 
     def request_classification(self):
 
-        image = self.image.convertToFormat(QImage.Format_RGB888).scaled(224, 224)
+        image = self.image_pixmap.pixmap().toImage()
+        image = image.convertToFormat(QImage.Format_RGB888).scaled(224, 224)
         image = image.constBits().asstring(image.byteCount())
         image = np.fromstring(image, np.uint8).reshape(224, 224, 3)
 
@@ -107,28 +104,30 @@ class MainWindow(QWidget):
         image = image.tostring()
         image = base64.b64encode(image)
 
-        self.result.update(json.loads(client.request(
+        class_id = json.loads(client.request(
             self.ip_address_edit.text(),
             self.port_number_edit.text(),
             json.dumps(dict(process_type="classification", image=image))
-        )))
+        ))["class_id"]
 
-        self.class_id_slider.setValue(self.result["class_id"])
+        self.class_id_slider.setValue(class_id)
 
     def request_generation(self):
 
-        self.result.update(json.loads(client.request(
+        class_id = self.class_id_slider.value()
+
+        image = json.loads(client.request(
             self.ip_address_edit.text(),
             self.port_number_edit.text(),
-            json.dumps(dict(process_type="generation", class_id=self.class_id_slider.value()))
-        )))
+            json.dumps(dict(process_type="generation", class_id=class_id))
+        ))["image"]
 
-        image = base64.b64decode(self.result["image"])
+        image = base64.b64decode(image)
         image = np.fromstring(image, np.uint8)
         image = cv2.imdecode(image, cv2.IMREAD_COLOR)
 
-        self.image = QImage(image.data, 512, 512, 512 * 3, QImage.Format_RGB888)
-        self.image_pixmap.setPixmap(QPixmap.fromImage(self.image))
+        image = QImage(image.data, 512, 512, 512 * 3, QImage.Format_RGB888)
+        self.image_pixmap.setPixmap(QPixmap.fromImage(image))
 
 
 if __name__ == "__main__":

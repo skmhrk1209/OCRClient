@@ -60,9 +60,10 @@ class Client {
 };
 
 PYBIND11_MODULE(client, module) {
-    module.def("request", [](const std::string& ip_address, const std::string& port_number, std::string&& data) -> std::string {
+    module.def("request", [](const std::string& ip, const std::string& port, std::string&& data) -> std::string {
+        py::gil_scoped_release release;
         asio::io_context io_context;
-        asio::ip::tcp::endpoint endpoint(asio::ip::address::from_string(ip_address), std::stoi(port_number));
+        asio::ip::tcp::endpoint endpoint(asio::ip::address::from_string(ip), std::stoi(port));
         Client client(io_context);
         if (client.connect(endpoint)) return client.write(std::move(data)), client.read();
     });
