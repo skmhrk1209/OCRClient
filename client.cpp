@@ -10,82 +10,60 @@ namespace py = pybind11;
 namespace asio = boost::asio;
 
 class Client {
-    struct Socket {
-        using Ptr = std::shared_ptr<Socket>;
-        template <typename... Args>
-        Socket(Args&&... args) : socket(std::forward<Args>(args)...) {}
-        template <typename... Args>
-        static Ptr create(Args&&... args) {
-            return std::make_shared<Socket>(std::forward<Args>(args)...);
-        }
-        asio::ip::tcp::socket socket;
-        std::string send_buffer;
-        std::string receive_buffer;
-    };
-
    private:
     asio::io_context& io_context;
-    Socket::Ptr socket;
-
-    const std::string sos;
-    const std::string eos;
+    asio::ip::tcp::socket socket;
 
    public:
-    Client(asio::io_context& context) : io_context(context), socket(Socket::create(context)), sos("<s>"), eos("</s>") {}
+    Client(asio::io_context& context) : io_context(context), socket(context) {}
 
     bool connect(const asio::ip::tcp::endpoint& endpoint) {
         boost::system::error_code error_code;
-        socket->socket.connect(endpoint, error_code);
+        socket.connect(endpoint, error_code);
 
         if (error_code) {
             std::cout << "connect failed: " << error_code.message() << std::endl;
             return false;
         } else {
-            std::cout << "connect succeeded: " << socket->socket.remote_endpoint() << std::endl;
+            std::cout << "connect succeeded: " << socket.remote_endpoint() << std::endl;
             return true;
         }
     }
 
-    void send(const std::string& string) {
-        socket->send_buffer = sos + string + eos;
+    void write(std::string&& data) {
+        std::string write_buffer(std::move(data));
+        write_buffer.push_back('\n');
+        boost::system::error_code error_code;
+        asio::write(socket, asio::buffer(write_buffer), error_code);
 
-        asio::async_write(socket->socket, asio::buffer(socket->send_buffer), [=](const auto& error_code, ...) {
-            if (error_code) {
-                std::cout << "send failed: " << error_code.message() << std::endl;
-                socket->socket.close();
-            } else {
-                std::cout << "send succeeded" << std::endl;
-                receive();
-            }
-        });
+        if (error_code) {
+            std::cout << "write failed: " << error_code.message() << std::endl;
+        } else {
+            std::cout << "write succeeded" << std::endl;
+        }
     }
 
-    void receive() {
-        asio::async_read_until(socket->socket, asio::dynamic_buffer(socket->receive_buffer), boost::regex(sos + ".*" + eos), [=](const auto& error_code, ...) {
-            if (error_code) {
-                std::cout << "receive failed: " << error_code.message() << std::endl;
-                socket->socket.close();
-            } else {
-                std::cout << "receive succeeded" << std::endl;
-                socket->receive_buffer.erase(socket->receive_buffer.begin(), socket->receive_buffer.begin() + sos.size());
-                socket->receive_buffer.erase(socket->receive_buffer.end() - eos.size(), socket->receive_buffer.end());
-            }
-        });
-    }
+    std::string read() {
+        std::string read_buffer;
+        boost::system::error_code error_code;
+        asio::read_until(socket, asio::dynamic_buffer(read_buffer), '\n', error_code);
+        read_buffer.pop_back();
 
-    std::string get_receive_buffer() const { return socket->receive_buffer; }
+        if (error_code) {
+            std::cout << "read failed: " << error_code.message() << std::endl;
+        } else {
+            std::cout << "read succeeded" << std::endl;
+        }
+
+        return read_buffer;
+    }
 };
 
 PYBIND11_MODULE(client, module) {
-    module.def("request", [](const std::string& ip_address, const std::string& port_number, const std::string& string) -> std::string {
+    module.def("request", [](const std::string& ip_address, const std::string& port_number, std::string&& data) -> std::string {
         asio::io_context io_context;
         asio::ip::tcp::endpoint endpoint(asio::ip::address::from_string(ip_address), std::stoi(port_number));
         Client client(io_context);
-
-        if (client.connect(endpoint)) {
-            client.send(string);
-            io_context.run();
-            return client.get_receive_buffer();
-        }
+        if (client.connect(endpoint)) return client.write(std::move(data)), client.read();
     });
 }
